@@ -1,0 +1,21 @@
+1) On the 'Load Log File' tab use the 'Browse' button to load the Iver3 log file. (.log)
+
+2) The log file is loaded as a pandas dataframe. Use the 'Mission Leg Filter' to remove 
+rows from the dataframe which are either too short or too close to the surface to be 
+valuable for analysis.
+
+3) On the 'Power AND Speed Table' tab the program will try to determine the 'Motor 
+Prefix.' Double check 'Motor Prefix' and the 'Battery Specs.' Click the 'Generate' 
+button to produce the two tables. Copy and paste these tables over the file's content 
+in UVC to use.
+
+4) The 'Quick Report' tab gives some analysis of the loaded log file. The 'Motor CMD 
+Regression Analysis' section gives the coefficient of determination (R Squared) value
+and the linear relationship function between the motor command value and speed in knots.
+The intercept value is the command used to stop the motor. The 'Power Regression 
+Analysis' section gives the cubic function needed to determine burn power at speed. 
+The 'Create Report' button creates a simple html file saved to the current directory.
+It plots the averaged rows and the power fuction and displays the power fucntion as well.
+
+The 'Append Database' section is an experimental tool that will probably be removed 
+later. I don't think it will provide much utility to a user.
