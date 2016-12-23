@@ -105,7 +105,10 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         num_steps = len(set(currentLog['Current_Step']))
         temp = currentLog.query('Vehicle_State == 6')
         if motor_speed_mode(temp) == 128:
-            print 'Smart Motor'
+            #print 'Smart Motor'
+            self.detect_smart_label.setText('Detected')
+            self.detect_analog_label.setText('')
+            self.radioButton_7.setChecked(True)
             temp = temp.query('Motor_Speed_CMD == 128')
             self.df_output.set_value(num_steps+1, 'Step', -1)
             self.df_output.set_value(num_steps+1, 'Knots', 0)
@@ -115,7 +118,10 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
             self.df_output.set_value(num_steps+1, 'Seconds', len(temp['Current_Step']))
             self.intercept = 128
         elif motor_speed_mode(temp) == 0:
-            print 'Analog Motor'
+            #print 'Analog Motor'
+            self.detect_analog_label.setText('Detected')
+            self.detect_smart_label.setText('')
+            self.radioButton_6.setChecked(True)
             temp = temp.query('Motor_Speed_CMD == 0')
             self.df_output.set_value(num_steps+1, 'Step', -1)
             self.df_output.set_value(num_steps+1, 'Knots', 0)

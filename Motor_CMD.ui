@@ -342,9 +342,9 @@
                          </widget>
                         </item>
                         <item>
-                         <widget class="QLabel" name="label_24">
+                         <widget class="QLabel" name="detect_analog_label">
                           <property name="text">
-                           <string>TextLabel</string>
+                           <string>Waiting for log</string>
                           </property>
                          </widget>
                         </item>
@@ -372,9 +372,9 @@
                          </widget>
                         </item>
                         <item>
-                         <widget class="QLabel" name="label_16">
+                         <widget class="QLabel" name="detect_smart_label">
                           <property name="text">
-                           <string>TextLabel</string>
+                           <string>Waiting for log</string>
                           </property>
                          </widget>
                         </item>
