@@ -1,9 +1,10 @@
 import sys # We need sys so that we can pass argv to QApplication
+
 import Motor_CMD # This file holds our MainWindow and all design related things
 import matplotlib.pyplot as plt
-import numpy
 import pandas as pd
-import statsmodels.formula.api as sm
+import numpy as np
+from sklearn import linear_model
 from PyQt4 import QtGui # Import the PyQt4 module we'll need
 
 class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
@@ -64,117 +65,29 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         
 
     def analyze(self):
-
-        def load_mission_file(_filename):
-            mission_file = pd.read_csv(str(self.filename), sep=';')
-            mission_file.columns = mission_file.columns.str.strip().str.replace(' ', '_')
-            return mission_file
-    
-        def motor_speed_mode(_dataframe):
-            mode = _dataframe['Motor_Speed_CMD'].value_counts(normalize=False, sort=True).index[0]
-            return mode
-
-        def ave_mission_legs(_dataframe):
-            # Find number of mission legs.  
-            num_steps = len(set(_dataframe['Current_Step']))
-            # Create a blank dataframe (self.df_output) for calculated data.  
-            columns = ['Step', 'Knots', 'CMD' , 'DFS', 'Power', 'Seconds']
-            index = range(num_steps)
-            self.df_output = pd.DataFrame(index = index, columns = columns)
-            # Find average Knots, CMD and DFS for each mission leg, set in  self.df_output.  
-            for i in range(num_steps):
-                temp = _dataframe.query('Current_Step == @i')
-                # Calculating the Current_Step is a math sanity check.  
-                self.df_output.set_value(i, 'Step', round(temp['Current_Step'].mean(), 0))
-                self.df_output.set_value(i, 'Knots', round(temp['Vehicle_Speed_(kn)'].mean(), 3))
-                self.df_output.set_value(i, 'CMD', round(temp['Motor_Speed_CMD'].mean(), 0))
-                self.df_output.set_value(i, 'Power', round(temp['Power_Watts'].mean(), 0))
-                self.df_output.set_value(i, 'DFS', round(temp['DFS_Depth_(m)'].mean(), 3))
-                # Mission files are one row per sec. Count the rows for a time count.  
-                self.df_output.set_value(i, 'Seconds', len(temp['Current_Step']))
-            return self.df_output
-
-
-        self.lin_coe = 0
-        currentLog = load_mission_file(self.filename)
-        self.df_output = ave_mission_legs(currentLog)
-        # Filter out mission legs under the DFS cutoff.  
-        self.df_output = self.df_output[self.df_output.DFS > self.DFS_cutoff.value()]
-        # Filter out mission legs with fewer rows than leg time. One row per sec.
-        self.df_output = self.df_output[self.df_output.Seconds > self.time_cutoff.value()]
-        num_steps = len(set(currentLog['Current_Step']))
-        temp = currentLog.query('Vehicle_State == 6')
-        if motor_speed_mode(temp) == 128:
+        #Create log object.
+        log = MissionLog(self.filename, self.DFS_cutoff.value(), self.time_cutoff.value())
+        self.df_output = log.cleanLog()
+        if log.motorType()[1] == 128:
             #print 'Smart Motor'
             self.detect_smart_label.setText('Detected')
             self.detect_analog_label.setText('')
             self.radioButton_7.setChecked(True)
-            temp = temp.query('Motor_Speed_CMD == 128')
-            self.df_output.set_value(num_steps+1, 'Step', -1)
-            self.df_output.set_value(num_steps+1, 'Knots', 0)
-            self.df_output.set_value(num_steps+1, 'CMD', 128)
-            self.df_output.set_value(num_steps+1, 'Power', round(temp['Power_Watts'].mean(), 0))
-            self.df_output.set_value(num_steps+1, 'DFS', round(temp['DFS_Depth_(m)'].mean(), 0))
-            self.df_output.set_value(num_steps+1, 'Seconds', len(temp['Current_Step']))
-            self.intercept = 128
-        elif motor_speed_mode(temp) == 0:
+        elif log.motorType()[1] == 0:
             #print 'Analog Motor'
             self.detect_analog_label.setText('Detected')
             self.detect_smart_label.setText('')
             self.radioButton_6.setChecked(True)
-            temp = temp.query('Motor_Speed_CMD == 0')
-            self.df_output.set_value(num_steps+1, 'Step', -1)
-            self.df_output.set_value(num_steps+1, 'Knots', 0)
-            self.df_output.set_value(num_steps+1, 'CMD', 0)
-            self.df_output.set_value(num_steps+1, 'Power', round(temp['Power_Watts'].mean(), 0))
-            self.df_output.set_value(num_steps+1, 'DFS', round(temp['DFS_Depth_(m)'].mean(), 0))
-            self.df_output.set_value(num_steps+1, 'Seconds', len(temp['Current_Step']))
-            self.intercept = 0
-        else:
-            print 'Motor type not detected'
-        # Convert dataframe of strings to floats for later linear regression.  
-        self.df_output = self.df_output.astype(float)
-        # Output current mission legs and linear regression slope to gui.
+
+        #Output current mission legs and linear regression slope to gui.
         self.output_legs.setText(str(self.df_output.to_string(col_space=15, index=False)))
-        # Statsmodels ordinary least squares linear regression.
-        self.df_output['CMD'] = self.df_output['CMD'] - self.intercept
-        x = self.df_output['CMD']
-        y = self.df_output['Knots']
-        model = sm.OLS(x, y)
-        results = model.fit()
+        
+        PWR_eq = str(log.coe_3_PWR) + '(kn)^3 + ' + str(log.coe_2_PWR) + '(kn)^2 + ' + str(log.coe_1_PWR) + '(kn) + ' + str(log.coe_0_PWR)
 
-        a = numpy.array(self.df_output['Knots'])        
-        b = numpy.array(self.df_output['Power'])
-        c = numpy.polyfit(a, b, 3)
-        self.polynomial = numpy.poly1d(c)
-        
-        self.power=numpy.poly1d(c)
-        self.coe_3_PWR = round(c[0], 3)
-        self.coe_2_PWR = round(c[1], 3)
-        self.coe_1_PWR = round(c[2], 3)
-        self.coe_0_PWR = round(c[3], 3)
-        
-        PWR_eq = str(self.coe_3_PWR) + '(kn)^3 + ' + str(self.coe_2_PWR) + '(kn)^2 + ' + str(self.coe_1_PWR) + '(kn) + ' + str(self.coe_0_PWR) 
-
-        # Create and output linear regression results to gui.
-        self.lin_coe = int(round(results.params[0], 0))
-        self.Rval_CMD = round(results.rsquared, 4)
-        
-        self.coe_label.setText(str(self.lin_coe))
-        self.int_label.setText(str(self.intercept))
-        self.r_label.setText(str(self.Rval_CMD))
+        self.coe_label.setText(str(log.speedSlope))
+        self.int_label.setText(str(log.speedIntercept))
+        self.r_label.setText(str(log.rValue))
         self.power_eq_label.setText(PWR_eq)
-        
-        drag_coef = 0
-        self.df_output = self.df_output.reset_index()
-        for i in range(len(self.df_output)):
-            speed = self.df_output.ix[i,'Knots']
-            speed = speed * 0.5144
-            speed = speed ** 3
-            power = self.df_output.ix[i,'Power']
-            drag_coef = power / 0.5 / 1000.0 / speed / 0.02
-            #print drag_coef
-
 
     def report(self):
         with open('test.html', 'w+') as report_file:
@@ -191,11 +104,11 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
             report_file.write(str(self.filename).split('/')[-1])
             report_file.write('</h4>')
             
-            xpoints = numpy.linspace(0.0, 6.0, 50)
-            a = numpy.array(self.df_output['Knots'])
-            b = numpy.array(self.df_output['Power'])
-            c = numpy.polyfit(a, b, 3)
-            self.polynomial = numpy.poly1d(c)
+            xpoints = np.linspace(0.0, 6.0, 50)
+            a = np.array(self.df_output['Knots'])
+            b = np.array(self.df_output['Power'])
+            c = np.polyfit(a, b, 3)
+            self.polynomial = np.poly1d(c)
             plt.plot(a, b, 'og')
             plt.plot(xpoints, self.polynomial(xpoints), '-r')
             plt.axis([0, 6, 0, 300])
@@ -234,8 +147,8 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
                 prefix = 6
             elif self.radioButton_7.isChecked() == True:
                 prefix = 7
-            for i in numpy.arange(0,5.05,0.05):
-                line_result = str(prefix) + ';' + str(i) + ';' + str(int(float((self.lin_coe * i) + self.intercept)))
+            for i in np.arange(0,5.05,0.05):
+                line_result = str(prefix) + ';' + str(i) + ';' + str(int(float((self.lin_coe * i) + (log.motorType()[1]))))
                 self.speed_table.append(str(line_result))
         except ValueError:
             self.speed_table.setText("No Iver Number Entered... Enter And Try Again")
@@ -243,7 +156,7 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         try:
             self.power_table.append(str('Version = 1'))
             self.power_table.append(str('Power Items: PowListItem=[Power_WHr];[Speed_Knots]'))
-            for i in numpy.arange(.5,5.1,0.1):
+            for i in np.arange(.5,5.1,0.1):
                 line_result = 'PowListItem=' + str(int(self.power(i))) + ';' + str(i)
                 self.power_table.append(str(line_result))
             self.power_table.append('PowTotal=' + str(self.spinBox_totalPower.value()))
@@ -262,11 +175,104 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         self.coe_label.setText('coefficient')
         self.int_label.setText('intercept')
 
+
 def main():
     app = QtGui.QApplication(sys.argv)  # A new instance of QApplication
     form = MotorCMD()                   # We set the form to be our MotorCMD (design)
     form.show()                         # Show the form
     app.exec_()                         # and execute the app
+
+class MissionLog(object):
+    def __init__(self, filename, cutoff_dfs, cutoff_time):
+        self.filename = filename
+        self.cutoff_dfs = cutoff_dfs
+        self.cutoff_time = cutoff_time
+        self.lin_coe = 0
+
+    def loadLog(self):
+        #Load csv file as pandas dataframe.
+        output = pd.read_csv(str(self.filename), sep=';')
+        output.columns = output.columns.str.strip().str.replace(' ', '_')
+        return output
+
+    def collapseLog(self):
+        #Collapse mission_log down to one row per mission step.
+        mission_log = self.loadLog()
+        # Find number of mission legs.
+        num_steps = len(set(mission_log['Current_Step']))
+        # Create a blank dataframe (output) for calculated data.
+        columns = ['Step', 'Knots', 'CMD', 'DFS', 'Power', 'Seconds']
+        index = range(num_steps)
+        output = pd.DataFrame(index=index, columns=columns)
+        # Find average Knots, CMD and DFS for each mission leg, set in  output.
+        for i in range(num_steps):
+            temp = mission_log.query('Current_Step == @i')
+            # Calculating the Current_Step is a math sanity check.
+            output.set_value(i, 'Step', round(temp['Current_Step'].mean(), 0))
+            output.set_value(i, 'Knots', round(temp['Vehicle_Speed_(kn)'].mean(), 3))
+            output.set_value(i, 'CMD', round(temp['Motor_Speed_CMD'].mean(), 0))
+            output.set_value(i, 'Power', round(temp['Power_Watts'].mean(), 0))
+            output.set_value(i, 'DFS', round(temp['DFS_Depth_(m)'].mean(), 3))
+            # Mission files are one row per sec. Count the rows for a time count.
+            output.set_value(i, 'Seconds', len(temp['Current_Step']))
+        return output
+
+    def cleanLog(self):
+        output = self.collapseLog()
+        # Filter out mission legs under the DFS cutoff.
+        output = output[output.DFS > self.cutoff_dfs]
+        # Filter out mission legs with fewer rows than leg time. One row per sec.
+        output = output[output.Seconds > self.cutoff_time]
+        #Add hotel load as last row (-1) of log.
+        num_steps = len(set(self.loadLog()['Current_Step']))
+        temp = self.loadLog().query('Vehicle_State == 6')
+        if self.motorType()[1] == 128:
+            temp = temp.query('Motor_Speed_CMD == 128')
+        elif self.motorType()[1] == 0:
+            temp = temp.query('Motor_Speed_CMD == 0')
+        output.set_value(num_steps + 1, 'Step', -1)
+        output.set_value(num_steps + 1, 'Knots', 0)
+        output.set_value(num_steps + 1, 'CMD', (self.motorType()[1]))
+        output.set_value(num_steps + 1, 'DFS', round(temp['DFS_Depth_(m)'].mean(), 0))
+        output.set_value(num_steps + 1, 'Power', round(temp['Power_Watts'].mean(), 0))
+        output.set_value(num_steps + 1, 'Seconds', len(temp['Current_Step']))
+        output = output.astype(float)
+        self.speedReg(output)
+        self.powerReg(output)
+        return output
+
+    def motorType(self):
+        output = self.loadLog()
+        output = output.query('Vehicle_State == 6')
+        mode = output['Motor_Speed_CMD'].value_counts(normalize=False, sort=True).index[0]
+        if mode == 128:
+            return ('Smart Motor', 128)
+        elif mode == 0:
+            return ('Analog Motor', 0)
+        else:
+            return ('Commonest CMD while parking not 0 or 128.')
+
+    def speedReg(self, log):
+        log['CMD'] = log['CMD'] - (self.motorType()[1])
+        X = log['CMD']
+        Y = log['Knots']
+        X = np.array(X).reshape(-1, 1)
+        Y = np.array(Y).reshape(-1, 1)
+        reg = linear_model.LinearRegression()
+        reg.fit(Y, X)
+        self.rValue = round(reg.score(Y, X), 3)
+        self.speedSlope = round(reg.coef_[0], 1)
+        self.speedIntercept = int(self.motorType()[1])
+
+    def powerReg(self, log):
+        a = np.array(log['Knots'])
+        b = np.array(log['Power'])
+        c = np.polyfit(a, b, 3)
+        self.polynomial = np.poly1d(c)
+        self.coe_3_PWR = round(c[0], 3)
+        self.coe_2_PWR = round(c[1], 3)
+        self.coe_1_PWR = round(c[2], 3)
+        self.coe_0_PWR = round(c[3], 3)
 
 
 if __name__ == '__main__':              # if we're running file directly and not importing it
