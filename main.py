@@ -38,7 +38,7 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         self.databaseFilename = QtGui.QFileDialog.getOpenFileName(self, 'Open File')
         self.databaseFilename_display.setText(self.databaseFilename)
         powerDatabase_df = pd.read_csv(str(self.databaseFilename), sep=';')
-        print powerDatabase_df
+        print(powerDatabase_df)
         
         self.databaseBrowser.setText(str(powerDatabase_df.to_string(col_space=10, index=False)))
         
@@ -69,12 +69,12 @@ class MotorCMD(QtGui.QMainWindow, Motor_CMD.Ui_MainWindow):
         log = MissionLog(self.filename, self.DFS_cutoff.value(), self.time_cutoff.value())
         self.df_output = log.cleanLog()
         if log.motorType()[1] == 128:
-            #print 'Smart Motor'
+            #print('Smart Motor')
             self.detect_smart_label.setText('Detected')
             self.detect_analog_label.setText('')
             self.radioButton_7.setChecked(True)
         elif log.motorType()[1] == 0:
-            #print 'Analog Motor'
+            #print('Analog Motor')
             self.detect_analog_label.setText('Detected')
             self.detect_smart_label.setText('')
             self.radioButton_6.setChecked(True)
